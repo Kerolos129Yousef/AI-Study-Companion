@@ -485,14 +485,18 @@ router.get(
       return res.status(404).json({ error: 'Shared set not found' });
     }
 
-    // Allow access if: public, or user is creator, or user is in sharedWith list
+    // Allow access if: public, or user is creator, or user is in sharedWith list, or user is in the group
     const isPublic = sharedSet.isPublic;
     const isCreator = sharedSet.createdBy === req.userId;
     const isSharedWithUser = req.userId && await prisma.sharedWith.findUnique({
       where: { setId_userId: { setId: sharedSet.id, userId: req.userId } },
     }).catch(() => null);
 
-    if (!isPublic && !isCreator && !isSharedWithUser) {
+    const isGroupMember = req.userId && (sharedSet as any).groupId && await prisma.studyGroupMember.findFirst({
+      where: { groupId: (sharedSet as any).groupId, userId: req.userId },
+    }).catch(() => null);
+
+    if (!isPublic && !isCreator && !isSharedWithUser && !isGroupMember) {
       return res.status(403).json({ error: 'You do not have access to this set' });
     }
 

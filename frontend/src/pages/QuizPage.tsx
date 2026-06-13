@@ -175,7 +175,7 @@ export default function QuizPage() {
                         : 'border-slate-300 bg-white text-slate-900 hover:border-blue-400 hover:bg-blue-50'
                     }`}
                   >
-                    <span className="font-bold text-blue-600">{letter}.</span> {option}
+                     {option}
                   </button>
                 );
               })}

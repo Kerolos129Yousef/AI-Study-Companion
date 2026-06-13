@@ -169,16 +169,18 @@ export async function generateSummary(lectureText: string): Promise<SummaryResul
     };
   }
 
-  const prompt = `You are an academic study assistant. Given the following lecture text, produce a structured summary in JSON format.
+  const prompt = `You are an academic study assistant. Given the following lecture text, produce a detailed and comprehensive structured summary in JSON format.
 
 Return ONLY valid JSON, no markdown, no explanation.
+
+IMPORTANT: The summary must be thorough and detailed. Write 5-8 substantial paragraphs covering all major concepts, examples, and explanations from the lecture. Each paragraph should be 3-5 sentences minimum. Do NOT write a brief or superficial overview — provide an in-depth summary that would help a student understand the material without reading the original lecture.
 
 Format:
 {
   "title": "string",
-  "keyTopics": ["string"],
-  "summary": "string (3-5 paragraphs)",
-  "importantTerms": [{"term": "string", "definition": "string"}]
+  "keyTopics": ["string (include at least 5-8 key topics)"],
+  "summary": "string (5-8 detailed paragraphs, each 3-5 sentences. Cover all main ideas, supporting details, examples, and conclusions from the lecture.)",
+  "importantTerms": [{"term": "string", "definition": "string (provide a clear, complete definition of 2-3 sentences)"}]
 }
 
 Lecture text:

@@ -23,7 +23,7 @@ export default function CoursesPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const { data: courses, isLoading, refetch: refetchCourses } = useQuery({
+  const { data: courses, isLoading } = useQuery({
     queryKey: ['courses'],
     queryFn: async () => {
       const response = await courseService.getCourses();
@@ -71,7 +71,8 @@ export default function CoursesPage() {
     onSuccess: () => {
       setLectureTitle('');
       setLectureError('');
-      refetchCourses();
+      queryClient.invalidateQueries({ queryKey: ['courses'] });
+      queryClient.invalidateQueries({ queryKey: ['lectures', selectedCourseId] });
     },
     onError: (error: any) => {
       const errorMessage = error.response?.data?.error || 'Failed to upload lecture. Please try again.';

@@ -8,6 +8,7 @@ interface Material {
   id: string;
   title: string;
   description?: string;
+  flashcardIds?: string[];
 }
 
 interface AddMaterialsModalProps {
@@ -53,11 +54,24 @@ const AddMaterialsModalContent: React.FC<AddMaterialsModalProps> = ({
       if (materialType === 'flashcard') {
         const response = await flashcardsAPI.getAllFlashcards();
         const data = response?.data?.data || response?.data || [];
-        const formatted = Array.isArray(data) ? data.map((f: any) => ({
-          id: f.id,
-          title: (f.front || f.sourceLectureTitle || 'Flashcard')?.substring(0, 60),
-          description: (f.back || '')?.substring(0, 100),
-        })) : [];
+        if (!Array.isArray(data)) { setMaterials([]); return; }
+        // Group flashcards by lecture
+        const lectureMap = new Map<string, { title: string; course: string; ids: string[] }>();
+        for (const f of data) {
+          const lectureId = f.lecture?.id || f.lectureId || 'unknown';
+          const lectureTitle = f.sourceLectureTitle || f.lecture?.title || 'Unknown Lecture';
+          const courseTitle = f.sourceLectureCourse || f.lecture?.course?.title || '';
+          if (!lectureMap.has(lectureId)) {
+            lectureMap.set(lectureId, { title: lectureTitle, course: courseTitle, ids: [] });
+          }
+          lectureMap.get(lectureId)!.ids.push(f.id);
+        }
+        const formatted: Material[] = Array.from(lectureMap.entries()).map(([lectureId, info]) => ({
+          id: lectureId,
+          title: info.title,
+          description: `${info.course ? info.course + ' · ' : ''}${info.ids.length} flashcard${info.ids.length !== 1 ? 's' : ''}`,
+          flashcardIds: info.ids,
+        }));
         setMaterials(formatted);
       } else if (materialType === 'quiz') {
         const response = await quizzesAPI.getAllQuizzes();
@@ -134,7 +148,16 @@ const AddMaterialsModalContent: React.FC<AddMaterialsModalProps> = ({
       setError(null);
 
       if (materialType === 'flashcard') {
-        await studyGroupsAPI.addFlashcardSetToGroup(groupId, selectedIds, setName, description);
+        // selectedIds are lecture IDs — resolve to actual flashcard IDs
+        const allFlashcardIds = materials
+          .filter(m => selectedIds.includes(m.id))
+          .flatMap(m => m.flashcardIds || []);
+        if (allFlashcardIds.length === 0) {
+          setError('No flashcards found for selected lectures');
+          setLoading(false);
+          return;
+        }
+        await studyGroupsAPI.addFlashcardSetToGroup(groupId, allFlashcardIds, setName, description);
       } else if (materialType === 'quiz') {
         await studyGroupsAPI.addQuizSetToGroup(groupId, selectedIds, setName, description);
       } else {
@@ -245,9 +268,29 @@ const AddMaterialsModalContent: React.FC<AddMaterialsModalProps> = ({
             </div>
           )}
 
-          {/* Search */}
+          {/* Search + Select All */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-300">Select {typeLabel}</label>
+            <div className="flex items-center justify-between">
+              <label className="text-sm font-medium text-slate-300">Select {typeLabel}</label>
+              {filteredMaterials.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const allIds = filteredMaterials.map(m => m.id);
+                    const allSelected = allIds.every(id => selectedIds.includes(id));
+                    if (allSelected) {
+                      setSelectedIds(prev => prev.filter(id => !allIds.includes(id)));
+                    } else {
+                      setSelectedIds(prev => [...new Set([...prev, ...allIds])]);
+                    }
+                  }}
+                  disabled={loading}
+                  className="text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors disabled:opacity-50"
+                >
+                  {filteredMaterials.every(m => selectedIds.includes(m.id)) ? 'Deselect All' : 'Select All'}
+                </button>
+              )}
+            </div>
             <div className="relative">
               <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
               <input
