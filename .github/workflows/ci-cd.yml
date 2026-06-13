@@ -2,10 +2,13 @@ name: CI/CD Pipeline
 
 on:
   pull_request:
-    branches: [main]
+    branches:
+      - main
+
   push:
-    branches: [main]
-    
+    branches:
+      - main
+
 permissions:
   contents: read
   security-events: write
@@ -16,97 +19,144 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Node.js 22
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Install frontend dependencies
-        run: npm ci
+      #################################################
+      # Frontend
+      #################################################
+
+      - name: Install Frontend Dependencies
         working-directory: frontend
-
-      - name: Install backend dependencies
         run: npm ci
-        working-directory: backend
 
-      - name: Lint frontend
-        run: npm run lint
+      - name: Lint Frontend
         working-directory: frontend
-
-      - name: Lint backend
         run: npm run lint
-        working-directory: backend
 
-      - name: Build frontend
+      - name: Build Frontend
+        working-directory: frontend
         run: npm run build
-        working-directory: frontend
 
-      - name: Build backend
-        run: |
-          npx prisma generate
-          npm run build
+      #################################################
+      # Backend
+      #################################################
+
+      - name: Install Backend Dependencies
         working-directory: backend
+        run: npm ci
 
-      - name: Set up Docker Buildx
+      - name: Lint Backend
+        working-directory: backend
+        run: npm run lint
+
+      - name: Generate Prisma Client
+        working-directory: backend
+        run: npx prisma generate
+
+      - name: Build Backend
+        working-directory: backend
+        run: npm run build
+
+      #################################################
+      # Docker Setup
+      #################################################
+
+      - name: Setup Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
+      - name: Login To Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build frontend image for scanning
+      #################################################
+      # Frontend Security Scan
+      #################################################
+
+      - name: Build Frontend Image For Scan
         uses: docker/build-push-action@v6
         with:
           context: ./frontend
           load: true
+          tags: studyai-frontend:scan
           build-args: |
             VITE_API_URL=http://54.162.235.197/api
-          tags: studyai-frontend:scan
 
       - name: Docker Scout Frontend Scan
         uses: docker/scout-action@v1
         with:
           command: cves
           image: studyai-frontend:scan
-          sarif-file: scout-results.sarif
-    
-      - name: Verify SARIF file exists
-        run: ls -lah
-      
-      - name: Upload Docker Scout SARIF
+          sarif-file: frontend-scout-results.sarif
+
+      - name: Upload Frontend SARIF
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: scout-results.sarif
+          sarif_file: frontend-scout-results.sarif
+
+      #################################################
+      # Push Images (Only on Main Branch Push)
+      #################################################
+
+      - name: Build And Push Frontend
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            kerolosyousef/studyai-frontend:latest
+            kerolosyousef/studyai-frontend:${{ github.sha }}
+          build-args: |
+            VITE_API_URL=http://54.162.235.197/api
+
+      - name: Build And Push Backend
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            kerolosyousef/studyai-backend:latest
+            kerolosyousef/studyai-backend:${{ github.sha }}
 
   cd:
     name: CD
     runs-on: ubuntu-latest
     needs: ci
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-  
+
     steps:
-      - name: Deploy to EC2
+      - name: Deploy To EC2
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-              set -e
-            
-              sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/studyai-frontend:latest
-              sudo docker pull ${{ secrets.DOCKERHUB_USERNAME }}/studyai-backend:latest
-            
-              sudo -u studyai git -C /home/studyai/app pull origin main
-            
-              sudo bash -c '
-                cd /home/studyai/app &&
-                docker compose -f docker-compose.prod.yml up -d --force-recreate
-              '
-            
-              sudo docker ps
+            set -e
+
+            echo "Pulling latest images..."
+            sudo docker pull kerolosyousef/studyai-frontend:latest
+            sudo docker pull kerolosyousef/studyai-backend:latest
+
+            echo "Updating repository..."
+            sudo -u studyai git -C /home/studyai/app pull origin main
+
+            echo "Restarting containers..."
+            sudo bash -c '
+              cd /home/studyai/app
+              docker compose -f docker-compose.prod.yml up -d --force-recreate
+            '
+
+            echo "Running containers:"
+            sudo docker ps
+
+            echo "Deployment completed successfully."
