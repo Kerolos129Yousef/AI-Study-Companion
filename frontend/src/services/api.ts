@@ -89,6 +89,12 @@ export const sharingAPI = {
 
   removeQuizShareUser: (id: string, userId: string) =>
     api.delete(`/sharing/quiz/${id}/remove-user/${userId}`),
+
+  getFlashcardSetForLecture: (lectureId: string) =>
+    api.get(`/sharing/flashcard/for-lecture/${lectureId}`),
+
+  getQuizSetForLecture: (lectureId: string) =>
+    api.get(`/sharing/quiz/for-lecture/${lectureId}`),
 };
 
 // Study Groups API

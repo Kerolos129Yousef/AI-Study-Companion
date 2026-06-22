@@ -26,3 +26,18 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
     return res.status(401).json({ error: 'Invalid token' });
   }
 };
+
+// Populates req.userId when a valid token is present, but never rejects the request.
+export const optionalAuthMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    try {
+      const decoded = jwt.verify(authHeader.substring(7), JWT_SECRET) as any;
+      req.userId = decoded.sub;
+      req.userEmail = decoded.email;
+    } catch {
+      // invalid token — treat as unauthenticated
+    }
+  }
+  next();
+};

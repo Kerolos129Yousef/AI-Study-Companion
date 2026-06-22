@@ -218,6 +218,7 @@ export default function QuizResultsPage() {
       <ShareModal
         isOpen={showShareModal}
         title="Quiz Results"
+        type="quiz"
         onClose={() => setShowShareModal(false)}
       />
     </Layout>

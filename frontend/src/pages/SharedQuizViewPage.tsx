@@ -1,10 +1,11 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { sharingAPI } from '../services/api';
+import { useAuthStore } from '../store/auth';
 import { LoadingSpinner } from '../components/Common';
 import Layout from '../components/Layout';
 import { useState } from 'react';
-import { ArrowLeft, Copy, Check, AlertCircle, ChevronRight, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Copy, Check, AlertCircle, ChevronRight, RotateCcw, LogIn } from 'lucide-react';
 
 interface Question {
   id: string;
@@ -47,6 +48,7 @@ export default function SharedQuizViewPage() {
   const { shareToken } = useParams<{ shareToken: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
   const [copied, setCopied] = useState(false);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, string>>({});
   const [submitted, setSubmitted] = useState(false);
@@ -286,17 +288,27 @@ export default function SharedQuizViewPage() {
               <p className="text-slate-500 text-sm">
                 {Object.keys(selectedAnswers).length}/{questions.length} answered
               </p>
-              <button
-                onClick={() => submitMutation.mutate()}
-                disabled={!allAnswered || submitMutation.isPending}
-                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {submitMutation.isPending ? (
-                  <LoadingSpinner size="sm" />
-                ) : (
-                  <>Submit Quiz <ChevronRight className="w-4 h-4" /></>
-                )}
-              </button>
+              {isAuthenticated ? (
+                <button
+                  onClick={() => submitMutation.mutate()}
+                  disabled={!allAnswered || submitMutation.isPending}
+                  className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitMutation.isPending ? (
+                    <LoadingSpinner size="sm" />
+                  ) : (
+                    <>Submit Quiz <ChevronRight className="w-4 h-4" /></>
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={() => navigate('/login')}
+                  className="flex items-center gap-2 px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-semibold transition-all"
+                >
+                  <LogIn className="w-4 h-4" />
+                  Sign in to submit
+                </button>
+              )}
             </div>
 
             {submitMutation.isError && (

@@ -4,6 +4,7 @@ import { X, Copy, Check, Search, Trash2 } from 'lucide-react';
 interface ShareModalProps {
   isOpen: boolean;
   title: string;
+  type: 'flashcard' | 'quiz';
   shareToken?: string;
   isPublic?: boolean;
   sharedUsers?: Array<{ id: string; name: string; email: string }>;
@@ -17,6 +18,7 @@ interface ShareModalProps {
 export const ShareModal: React.FC<ShareModalProps> = ({
   isOpen,
   title,
+  type,
   shareToken,
   isPublic = false,
   sharedUsers = [],
@@ -32,7 +34,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({
 
   if (!isOpen) return null;
 
-  const publicUrl = shareToken ? `${window.location.origin}/shared/${shareToken}` : '';
+  const publicUrl = shareToken ? `${window.location.origin}/shared/${type}/${shareToken}` : '';
 
   const handleCopyLink = () => {
     if (publicUrl) {

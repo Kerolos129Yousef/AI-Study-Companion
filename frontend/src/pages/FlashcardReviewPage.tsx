@@ -1,11 +1,11 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { flashcardService } from '../services';
+import { sharingAPI } from '../services/api';
 import { LoadingSpinner } from '../components/Common';
 import { useNavigate, useParams } from 'react-router-dom';
 import Layout from '../components/Layout';
 import { useState, useEffect } from 'react';
-import { RotateCw, CheckCircle, XCircle, ArrowLeft, AlertCircle, Share2 } from 'lucide-react';
-import { ShareModal } from '../components/ShareModal';
+import { RotateCw, CheckCircle, XCircle, ArrowLeft, AlertCircle, Copy, Check } from 'lucide-react';
 import type { Flashcard } from '../types';
 
 export default function FlashcardReviewPage() {
@@ -14,7 +14,9 @@ export default function FlashcardReviewPage() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [reviewed, setReviewed] = useState(0);
-  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareToken, setShareToken] = useState<string | null>(null);
+  const [copyPending, setCopyPending] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // If lectureId is provided, fetch flashcards for that lecture, otherwise fetch due flashcards
   const { data: flashcardsResponse, isLoading, error: flashcardsError } = useQuery({
@@ -67,6 +69,51 @@ export default function FlashcardReviewPage() {
       }
     },
   });
+
+  const handleCopyShareLink = async () => {
+    if (!lectureId) return;
+    try {
+      setCopyPending(true);
+
+      let token = shareToken;
+      if (!token) {
+        // Check if a shared set already exists for this lecture
+        const existingRes = await sharingAPI.getFlashcardSetForLecture(lectureId);
+        const existing = existingRes.data?.data ?? existingRes.data;
+        if (existing?.shareToken) {
+          token = existing.shareToken;
+          // Ensure it's public
+          if (!existing.isPublic) {
+            const toggled = await sharingAPI.toggleFlashcardPublic(existing.id);
+            token = (toggled.data?.data ?? toggled.data).shareToken;
+          }
+        } else {
+          // Create a new shared set from current flashcards
+          const flashcardsRes = await flashcardService.getFlashcards(lectureId);
+          const cards = flashcardsRes.data?.data || flashcardsRes.data || [];
+          if (cards.length === 0) return;
+          const createRes = await sharingAPI.createFlashcardSet(
+            cards.map((f: any) => f.id),
+            'Flashcard Set'
+          );
+          const created = createRes.data?.data ?? createRes.data;
+          // Make it public
+          const toggled = await sharingAPI.toggleFlashcardPublic(created.id);
+          token = (toggled.data?.data ?? toggled.data).shareToken;
+        }
+        setShareToken(token);
+      }
+
+      const url = `${window.location.origin}/shared/flashcard/${token}`;
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // silently fail
+    } finally {
+      setCopyPending(false);
+    }
+  };
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -198,13 +245,21 @@ export default function FlashcardReviewPage() {
             {lectureId ? 'Lecture Flashcards' : 'Flashcard Review'}
           </h1>
           <div className="flex items-center gap-4">
-            <button
-              onClick={() => setShowShareModal(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors"
-            >
-              <Share2 className="w-4 h-4" />
-              Share
-            </button>
+            {lectureId && (
+              <button
+                onClick={handleCopyShareLink}
+                disabled={copyPending}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-medium transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                {copied ? (
+                  <><Check className="w-4 h-4" />Copied!</>
+                ) : copyPending ? (
+                  <><LoadingSpinner size="sm" />Preparing...</>
+                ) : (
+                  <><Copy className="w-4 h-4" />Copy Share Link</>
+                )}
+              </button>
+            )}
             <div className="text-right">
               <p className="text-slate-400 text-sm">Card {currentIndex + 1} of {flashcards.length}</p>
               <p className="text-white font-semibold">{reviewed} reviewed</p>
@@ -303,12 +358,6 @@ export default function FlashcardReviewPage() {
         </div>
       </div>
 
-      {/* Share Modal */}
-      <ShareModal
-        isOpen={showShareModal}
-        title="Flashcard Set"
-        onClose={() => setShowShareModal(false)}
-      />
     </Layout>
   );
 }

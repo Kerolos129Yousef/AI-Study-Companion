@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, BookOpen, AlertCircle, Plus, Trash2, X, ExternalLink, FileText, ArrowUpRight } from 'lucide-react';
+import { ArrowLeft, Users, BookOpen, AlertCircle, Plus, Trash2, X, ExternalLink, ArrowUpRight, LogOut } from 'lucide-react';
 import { studyGroupsAPI } from '../services/api';
 import { LoadingSpinner } from '../components/Common';
 import Layout from '../components/Layout';
@@ -11,7 +11,6 @@ import { useAuthStore } from '../store/auth';
 interface SharedLecture {
   lectureId: string;
   title: string;
-  fileUrl: string;
   courseTitle: string;
 }
 
@@ -48,6 +47,9 @@ export const StudyGroupDetailPage: React.FC = () => {
   const [showAddMaterialsModal, setShowAddMaterialsModal] = useState(false);
   const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
   const [removingMaterialId, setRemovingMaterialId] = useState<string | null>(null);
+  const [leavingGroup, setLeavingGroup] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [leaveError, setLeaveError] = useState<string | null>(null);
 
   useEffect(() => {
     if (id) fetchGroupDetail();
@@ -108,6 +110,21 @@ export const StudyGroupDetailPage: React.FC = () => {
 
   const isOwner = group?.createdBy === userId;
 
+  const handleLeaveGroup = async () => {
+    if (!window.confirm(`Leave "${group?.name}"? You will lose access to all shared materials.`)) return;
+    try {
+      setLeavingGroup(true);
+      setLeaveError(null);
+      await studyGroupsAPI.leaveGroup(id!);
+      setSuccessMessage('You have left the group.');
+      setTimeout(() => navigate('/study-groups'), 1500);
+    } catch (err: any) {
+      setLeaveError(err.response?.data?.error || 'Failed to leave the group. Please try again.');
+    } finally {
+      setLeavingGroup(false);
+    }
+  };
+
   if (loading) {
     return (
       <Layout>
@@ -165,11 +182,33 @@ export const StudyGroupDetailPage: React.FC = () => {
             >
               <ArrowLeft className="w-6 h-6 text-slate-400" />
             </button>
-            <div>
+            <div className="flex-1">
               <h1 className="text-4xl font-bold text-white mb-2">{group.name}</h1>
               {group.description && <p className="text-slate-400">{group.description}</p>}
             </div>
+            {!isOwner && (
+              <button
+                onClick={handleLeaveGroup}
+                disabled={leavingGroup}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600/10 hover:bg-red-600/20 border border-red-600/30 text-red-400 hover:text-red-300 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <LogOut className="w-4 h-4" />
+                {leavingGroup ? 'Leaving...' : 'Leave Group'}
+              </button>
+            )}
           </div>
+
+          {successMessage && (
+            <div className="mb-6 p-4 bg-green-500/10 border border-green-500/20 rounded-lg">
+              <p className="text-sm text-green-400">{successMessage}</p>
+            </div>
+          )}
+
+          {leaveError && (
+            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+              <p className="text-sm text-red-400">{leaveError}</p>
+            </div>
+          )}
 
           {/* Stats */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
@@ -324,18 +363,6 @@ export const StudyGroupDetailPage: React.FC = () => {
                         {lec.courseTitle && <p className="text-sm text-slate-400 truncate">{lec.courseTitle}</p>}
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        {lec.fileUrl && (
-                          <a
-                            href={lec.fileUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="p-2 hover:bg-emerald-500/10 text-emerald-400 rounded transition-colors"
-                            title="Open PDF"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <FileText className="w-4 h-4" />
-                          </a>
-                        )}
                         <button
                           onClick={() => navigate(`/lectures/${lec.lectureId}`)}
                           className="p-2 hover:bg-blue-500/10 text-blue-400 rounded transition-colors"

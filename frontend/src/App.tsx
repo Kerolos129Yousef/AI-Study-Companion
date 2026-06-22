@@ -129,22 +129,8 @@ function App() {
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/shared/flashcard/:shareToken"
-            element={
-              <ProtectedRoute>
-                <SharedFlashcardViewPage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/shared/quiz/:shareToken"
-            element={
-              <ProtectedRoute>
-                <SharedQuizViewPage />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/shared/flashcard/:shareToken" element={<SharedFlashcardViewPage />} />
+          <Route path="/shared/quiz/:shareToken" element={<SharedQuizViewPage />} />
           <Route path="/" element={<Navigate to="/dashboard" />} />
         </Routes>
       </BrowserRouter>

@@ -7,10 +7,19 @@ import { v4 as uuidv4 } from 'uuid';
 
 const router = Router();
 
+function requireAuth(req: AuthRequest, res: Response): boolean {
+  if (!req.userId) {
+    res.status(401).json({ error: 'Authentication required' });
+    return false;
+  }
+  return true;
+}
+
 // Create a shareable flashcard set
 router.post(
   '/flashcard-set',
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!requireAuth(req, res)) return;
     const { flashcardIds, title, description } = req.body;
 
     if (!flashcardIds || !Array.isArray(flashcardIds) || flashcardIds.length === 0) {
@@ -64,6 +73,7 @@ router.post(
 router.post(
   '/quiz-set',
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!requireAuth(req, res)) return;
     const { quizIds, title, description } = req.body;
 
     if (!quizIds || !Array.isArray(quizIds) || quizIds.length === 0) {
@@ -117,6 +127,7 @@ router.post(
 router.patch(
   '/flashcard/:id/toggle-public',
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!requireAuth(req, res)) return;
     const { id } = req.params;
 
     // Check ownership
@@ -152,6 +163,7 @@ router.patch(
 router.patch(
   '/quiz/:id/toggle-public',
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!requireAuth(req, res)) return;
     const { id } = req.params;
 
     // Check ownership
@@ -187,6 +199,7 @@ router.patch(
 router.post(
   '/flashcard/:id/share-with',
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!requireAuth(req, res)) return;
     const { id } = req.params;
     const { userIds } = req.body;
 
@@ -269,6 +282,7 @@ router.post(
 router.post(
   '/quiz/:id/share-with',
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!requireAuth(req, res)) return;
     const { id } = req.params;
     const { userIds } = req.body;
 
@@ -612,6 +626,7 @@ router.get(
 router.post(
   '/quiz/:shareToken/submit',
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!requireAuth(req, res)) return;
     const { shareToken } = req.params;
     const { answers, lectureId } = req.body;
 
@@ -702,6 +717,7 @@ router.post(
 router.post(
   '/flashcard/:id/duplicate',
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!requireAuth(req, res)) return;
     const { id } = req.params;
 
     const sharedSet = await prisma.sharedFlashcardSet.findUnique({
@@ -746,6 +762,7 @@ router.post(
 router.post(
   '/quiz/:id/duplicate',
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!requireAuth(req, res)) return;
     const { id } = req.params;
 
     const sharedSet = await prisma.sharedQuizSet.findUnique({
@@ -790,6 +807,7 @@ router.post(
 router.delete(
   '/flashcard/:id/remove-user/:userId',
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!requireAuth(req, res)) return;
     const { id, userId } = req.params;
 
     // Check ownership
@@ -817,6 +835,7 @@ router.delete(
 router.delete(
   '/quiz/:id/remove-user/:userId',
   asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!requireAuth(req, res)) return;
     const { id, userId } = req.params;
 
     // Check ownership
@@ -837,6 +856,58 @@ router.delete(
     });
 
     return sendSuccess(res, { message: 'User removed from shared set' });
+  })
+);
+
+// Get the shared flashcard set for a specific lecture owned by the current user
+router.get(
+  '/flashcard/for-lecture/:lectureId',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!requireAuth(req, res)) return;
+    const { lectureId } = req.params;
+
+    const flashcardItems = await prisma.sharedFlashcardSetItem.findMany({
+      where: {
+        flashcard: { lectureId, userId: req.userId },
+      },
+      include: {
+        set: true,
+      },
+    });
+
+    const set = flashcardItems
+      .map((item) => item.set)
+      .filter((s) => s.createdBy === req.userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] ?? null;
+
+    return sendSuccess(res, set);
+  })
+);
+
+// Get the shared quiz set for a specific lecture owned by the current user
+router.get(
+  '/quiz/for-lecture/:lectureId',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (!requireAuth(req, res)) return;
+    const { lectureId } = req.params;
+
+    // Find all quizzes for this lecture that belong to the user
+    const quizItems = await prisma.sharedQuizSetItem.findMany({
+      where: {
+        quiz: { lectureId, userId: req.userId },
+      },
+      include: {
+        set: true,
+      },
+    });
+
+    // Return the first set found (most recently created wins)
+    const set = quizItems
+      .map((item) => item.set)
+      .filter((s) => s.createdBy === req.userId)
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] ?? null;
+
+    return sendSuccess(res, set);
   })
 );
 

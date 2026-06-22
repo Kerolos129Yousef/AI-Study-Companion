@@ -342,16 +342,49 @@ export default function LectureDetailPage() {
 
   const handleOpenShareModal = async (type: 'flashcard' | 'quiz') => {
     if (!id) return;
+
+    // If we already have a shared set in state, skip creation and open the modal immediately
+    if (type === 'flashcard' && sharedFlashcardSet) {
+      setShareType('flashcard');
+      setShowShareModal(true);
+      return;
+    }
+    if (type === 'quiz' && sharedQuizSet) {
+      setShareType('quiz');
+      setShowShareModal(true);
+      return;
+    }
+
     try {
       setShareLoading(true);
       if (type === 'flashcard') {
-        const res = await flashcardService.getFlashcards(id);
-        const flashcards = res.data?.data || res.data || [];
+        // Check if a shared set already exists for this lecture
+        const existingRes = await sharingAPI.getFlashcardSetForLecture(id);
+        const existing = existingRes.data?.data ?? existingRes.data;
+        if (existing?.id) {
+          setSharedFlashcardSet(existing);
+          setShareType('flashcard');
+          setShowShareModal(true);
+          return;
+        }
+        // None exists — create one from the current flashcards
+        const flashcardsRes = await flashcardService.getFlashcards(id);
+        const flashcards = flashcardsRes.data?.data || flashcardsRes.data || [];
         if (flashcards.length === 0) { showToast('error', 'No flashcards to share. Generate first!'); return; }
         await createSharedFlashcardSetMutation.mutateAsync(flashcards.map((f: any) => f.id));
       } else {
-        const res = await quizService.getHistory();
-        const quizzes = res.data?.data || res.data || [];
+        // Check if a shared set already exists for this lecture
+        const existingRes = await sharingAPI.getQuizSetForLecture(id);
+        const existing = existingRes.data?.data ?? existingRes.data;
+        if (existing?.id) {
+          setSharedQuizSet(existing);
+          setShareType('quiz');
+          setShowShareModal(true);
+          return;
+        }
+        // None exists — create one from lecture-specific quiz history
+        const quizzesRes = await quizService.getLectureHistory(id);
+        const quizzes = quizzesRes.data?.data || quizzesRes.data || [];
         if (quizzes.length === 0) { showToast('error', 'No quizzes to share. Generate first!'); return; }
         await createSharedQuizSetMutation.mutateAsync(quizzes.map((q: any) => q.id));
       }
@@ -724,6 +757,7 @@ export default function LectureDetailPage() {
       {/* Share Modal */}
       <ShareModal
         isOpen={showShareModal}
+        type={shareType}
         title={shareType === 'flashcard'
           ? `${lecture?.title || 'Lecture'} Flashcards`
           : `${lecture?.title || 'Lecture'} Quizzes`
