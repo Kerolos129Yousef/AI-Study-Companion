@@ -78,19 +78,19 @@ router.post(
       const email = raw.email.trim().toLowerCase();
       const { password } = raw;
 
-      console.log(`[REGISTER] Register attempt for: ${email}`);
-
       const existingUser = await prisma.user.findUnique({ where: { email } });
       if (existingUser) {
         return res.status(409).json({ error: 'An account with this email already exists.' });
       }
 
+      // Hash password with bcrypt (cost factor 10) before storing
       const hashedPassword = await bcrypt.hash(password, 10);
 
       const newUser = await prisma.user.create({
         data: { email, name, password: hashedPassword },
       });
 
+      // Issue a signed JWT (7-day expiry) with user ID as the subject claim
       const token = jwt.sign({ sub: newUser.id, email: newUser.email }, JWT_SECRET, { expiresIn: '7d' });
 
       res.status(201).json({
@@ -100,7 +100,6 @@ router.post(
         },
       });
     } catch (error: any) {
-      console.log('[REGISTER] FATAL ERROR:', error.message);
       res.status(500).json({ error: `Server error: ${error.message}` });
     }
   })
@@ -113,52 +112,35 @@ router.post(
     try {
       const { email, password } = req.body as LoginRequest;
 
-      console.log(`[LOGIN] Login attempt for: ${email}`);
-
       if (!email || !password) {
-        console.log('[LOGIN] Missing email or password');
         return res.status(400).json({ error: 'Email and password are required' });
       }
 
-      console.log('[LOGIN] Finding user...');
       const user = await prisma.user.findUnique({ where: { email } });
-      console.log(`[LOGIN] User found: ${user ? 'YES' : 'NO'}`);
 
       if (!user) {
-        console.log(`[LOGIN] User not found with email: ${email}`);
         return res.status(401).json({ error: 'Invalid email or password' });
       }
 
-      console.log('[LOGIN] Comparing password...');
       const passwordMatch = await bcrypt.compare(password, user.password);
-      console.log(`[LOGIN] Password match: ${passwordMatch}`);
 
       if (!passwordMatch) {
-        console.log('[LOGIN] Password does not match');
         return res.status(401).json({ error: 'Invalid email or password' });
       }
 
-      console.log('[LOGIN] Generating JWT token...');
       const token = jwt.sign({ sub: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
-      console.log('[LOGIN] Token generated successfully');
 
-      console.log('[LOGIN] Sending response...');
-      const responseData = {
+      res.json({
         data: {
-          token: token,
+          token,
           user: {
             id: user.id,
             email: user.email,
             name: user.name
           }
         }
-      };
-      console.log('[LOGIN] Response data prepared:', JSON.stringify(responseData).substring(0, 100));
-      res.json(responseData);
-      console.log('[LOGIN] Response sent successfully');
+      });
     } catch (error: any) {
-      console.log("[LOGIN] FATAL ERROR:", error.message);
-      console.log("[LOGIN] Error stack:", error.stack);
       res.status(500).json({ error: `Server error: ${error.message}` });
     }
   })
@@ -166,7 +148,6 @@ router.post(
 
 // Logout
 router.post('/logout', (req: Request, res: Response) => {
-  console.log('[LOGOUT] Logout request');
   res.json({ success: true });
 });
 

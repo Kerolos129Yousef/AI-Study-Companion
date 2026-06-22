@@ -15,6 +15,8 @@ interface AuthStore {
   logout: () => void;
 }
 
+// Hydrates user from localStorage on initial load so sessions survive page refreshes.
+// The token is also stored in localStorage and set as an Authorization header by the API client.
 const getStoredUser = (): User | null => {
   try {
     const stored = localStorage.getItem('user');
@@ -29,7 +31,6 @@ export const useAuthStore = create<AuthStore>((set) => ({
   token: localStorage.getItem('token'),
   isAuthenticated: !!localStorage.getItem('token'),
   setUser: (user) => {
-    console.log('[AUTH STORE] Setting user:', user);
     if (user) {
       localStorage.setItem('user', JSON.stringify(user));
     } else {
@@ -38,7 +39,6 @@ export const useAuthStore = create<AuthStore>((set) => ({
     set({ user });
   },
   setToken: (token) => {
-    console.log('[AUTH STORE] Setting token:', token ? 'token set' : 'token cleared');
     if (token) {
       localStorage.setItem('token', token);
       set({ token, isAuthenticated: true });
@@ -48,7 +48,6 @@ export const useAuthStore = create<AuthStore>((set) => ({
     }
   },
   logout: () => {
-    console.log('[AUTH STORE] Logging out');
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     set({ user: null, token: null, isAuthenticated: false });

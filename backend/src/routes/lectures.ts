@@ -30,7 +30,9 @@ router.get(
   })
 );
 
-// Upload PDF and create lecture
+// Upload PDF and create lecture.
+// Pipeline: validate PDF → extract raw text via pdf-parse → upload file to Supabase Storage → persist lecture record.
+// Raw text is stored in the DB for downstream AI generation (summaries, flashcards, quizzes).
 router.post(
   '/upload',
   upload.single('file'),
@@ -117,16 +119,15 @@ router.patch(
   })
 );
 
-// Get lecture summary (generate if not exists)
+// Get or generate lecture summary. Implements a lazy-generation pattern:
+// returns cached summary if valid, or generates one via LLM from the lecture's raw text.
+// Invalid cached summaries (containing "Unable to generate") are cleared and retried.
 router.get(
   '/:id/summary',
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    console.log('[SUMMARY] Fetching summary for lecture:', req.params.id);
-
     const lecture = await prisma.lecture.findUnique({ where: { id: req.params.id } });
 
     if (!lecture || lecture.userId !== req.userId) {
-      console.log('[SUMMARY] Lecture not found or unauthorized');
       return res.status(404).json({ error: 'Lecture not found' });
     }
 
@@ -134,10 +135,8 @@ router.get(
     if (lecture.summary) {
       const parsedSummary = JSON.parse(lecture.summary);
       if (!parsedSummary.title.includes('Unable to generate')) {
-        console.log('[SUMMARY] Returning cached summary');
         return res.json({ data: parsedSummary });
       }
-      console.log('[SUMMARY] Cached summary is invalid, regenerating...');
       // Delete invalid cached summary
       await prisma.lecture.update({
         where: { id: req.params.id },
@@ -146,24 +145,15 @@ router.get(
     }
 
     // Generate summary
-    console.log('[SUMMARY] Generating new summary, text length:', lecture.rawText?.length || 0);
-    try {
-      const summary = await generateSummary(lecture.rawText);
-      console.log('[SUMMARY] Generated summary:', JSON.stringify(summary).substring(0, 200));
+    const summary = await generateSummary(lecture.rawText);
 
-      // Save summary
-      await prisma.lecture.update({
-        where: { id: req.params.id },
-        data: { summary: JSON.stringify(summary) },
-      });
+    // Save summary
+    await prisma.lecture.update({
+      where: { id: req.params.id },
+      data: { summary: JSON.stringify(summary) },
+    });
 
-      console.log('[SUMMARY] Summary saved successfully');
-      res.json({ data: summary });
-    } catch (error: any) {
-      console.error('[SUMMARY] Error generating summary:', error.message);
-      console.error('[SUMMARY] Error stack:', error.stack);
-      throw error;
-    }
+    res.json({ data: summary });
   })
 );
 

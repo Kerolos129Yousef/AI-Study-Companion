@@ -16,18 +16,10 @@ export default function LoginPage() {
   const mutation = useMutation({
     mutationFn: () => authService.login(email, password),
     onSuccess: (response) => {
-      console.log('[LOGIN] Success response:', response);
-      console.log('[LOGIN] Response data:', response.data);
-
-      // Extract from response.data.data (backend wraps response)
       const responseData = response.data.data || response.data;
       const { token, user } = responseData;
 
-      console.log('[LOGIN] Extracted token:', token ? 'token found' : 'token missing');
-      console.log('[LOGIN] Extracted user:', user);
-
       if (!token || !user) {
-        console.error('[LOGIN] Missing token or user in response');
         setError('Invalid server response. Please try again.');
         return;
       }
@@ -35,11 +27,9 @@ export default function LoginPage() {
       setError('');
       setToken(token);
       setUser(user);
-      console.log('[LOGIN] Token and user set, navigating to dashboard...');
       navigate('/dashboard');
     },
     onError: (error: any) => {
-      console.error('[LOGIN] Error:', error);
       const errorMessage = error.response?.data?.error
         || error.response?.data?.message
         || error.message

@@ -8,6 +8,8 @@ export interface AuthRequest extends Request {
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
+// Enforces authentication: rejects requests without a valid Bearer JWT token.
+// Attaches userId and userEmail to the request for downstream route handlers.
 export const authMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
 
@@ -27,7 +29,8 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
   }
 };
 
-// Populates req.userId when a valid token is present, but never rejects the request.
+// Same as authMiddleware but never rejects — allows unauthenticated access
+// while enriching the request with user identity when a valid token is present.
 export const optionalAuthMiddleware = (req: AuthRequest, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith('Bearer ')) {

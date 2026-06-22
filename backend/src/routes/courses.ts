@@ -36,13 +36,6 @@ router.get(
         _count: { id: true },
         _avg: { score: true },
       });
-      const totalQuestions = await prisma.quizQuestion.groupBy({
-        by: ['quizId'],
-        where: { userId: req.userId },
-        _count: { id: true },
-      });
-      // Build a quizId -> total map for percentage calculation
-      const quizTotalMap = new Map(totalQuestions.map((q) => [q.quizId, q._count.id]));
       // Build avgScore per lecture (avg of percentages across all quizzes for that lecture)
       const quizScoresByLecture = await prisma.quiz.findMany({
         where: { lectureId: { in: lectureIds }, userId: req.userId },
@@ -73,7 +66,6 @@ router.get(
 
       res.json({ data: enrichedCourses });
     } catch (error: any) {
-      console.log('[COURSES] Error fetching courses:', error.message);
       res.status(500).json({ error: `Failed to fetch courses: ${error.message}` });
     }
   })
@@ -89,7 +81,6 @@ router.post(
       }
 
       const { title, description, examDate } = req.body;
-      console.log('[COURSES POST] Creating course for userId:', req.userId, 'with data:', { title, description, examDate });
 
       if (!title) {
         return res.status(400).json({ error: 'Course title is required' });
@@ -105,10 +96,8 @@ router.post(
         include: { _count: { select: { lectures: true } } },
       });
 
-      console.log('[COURSES POST] Course created successfully:', course);
       res.status(201).json({ data: course });
     } catch (error: any) {
-      console.log('[COURSES] Error creating course:', error.message);
       res.status(500).json({ error: `Failed to create course: ${error.message}` });
     }
   })
@@ -134,7 +123,6 @@ router.get(
 
       res.json({ data: course });
     } catch (error: any) {
-      console.log('[COURSES] Error fetching course:', error.message);
       res.status(500).json({ error: `Failed to fetch course: ${error.message}` });
     }
   })
@@ -162,7 +150,6 @@ router.patch(
 
       res.json({ data: updated });
     } catch (error: any) {
-      console.log('[COURSES] Error updating course:', error.message);
       res.status(500).json({ error: `Failed to update course: ${error.message}` });
     }
   })
@@ -187,7 +174,6 @@ router.delete(
 
       res.json({ success: true });
     } catch (error: any) {
-      console.log('[COURSES] Error deleting course:', error.message);
       res.status(500).json({ error: `Failed to delete course: ${error.message}` });
     }
   })

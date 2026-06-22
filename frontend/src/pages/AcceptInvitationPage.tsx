@@ -73,8 +73,6 @@ export const AcceptInvitationPage: React.FC = () => {
         const errorMsg = err.response?.data?.error || err.message || 'Failed to accept invitation';
         setMessage(errorMsg);
       }
-
-      console.error('Accept invitation error:', err);
     } finally {
       setLoading(false);
     }

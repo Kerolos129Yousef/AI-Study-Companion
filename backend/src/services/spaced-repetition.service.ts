@@ -10,6 +10,8 @@ export interface FlashcardSchedulingData {
   lastReviewDate?: Date;
 }
 
+// SM-2 spaced repetition algorithm: calculates next review date based on user's
+// self-assessed difficulty. Ease factor adjusts the interval growth rate over time.
 export function calculateNextReview(
   ease: 'easy' | 'hard' | 'again',
   currentInterval: number = 1.0,
@@ -29,6 +31,7 @@ export function calculateNextReview(
     newEase = Math.max(1.3, currentEase - 0.2);
     daysToAdd = 1;
   } else if (ease === 'again') {
+    // "Again" resets interval and schedules re-review in ~10 minutes
     newInterval = 1.0;
     newEase = Math.max(1.3, currentEase - 0.3);
     daysToAdd = 0.0069; // 10 minutes in days (10/1440)
@@ -42,11 +45,6 @@ export function calculateNextReview(
     interval: newInterval,
     ease: newEase,
   };
-}
-
-export function getFlashcardsDue(flashcards: any[]): any[] {
-  const now = new Date();
-  return flashcards.filter((card) => new Date(card.nextReview) <= now);
 }
 
 export function calculateSchedulingStats(flashcards: any[]): {

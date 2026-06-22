@@ -12,8 +12,6 @@ const router = Router();
 router.get(
   '/user/all',
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    console.log('[FLASHCARDS_ROUTE] GET /user/all - Fetching all flashcards for user:', req.userId);
-
     const flashcards = await prisma.flashcard.findMany({
       where: { userId: req.userId },
       include: {
@@ -30,8 +28,6 @@ router.get(
       },
       orderBy: { createdAt: 'desc' },
     });
-
-    console.log('[FLASHCARDS_ROUTE] Found', flashcards.length, 'flashcards');
 
     // Enrich with source metadata
     const enriched = flashcards.map(fc => ({
@@ -122,54 +118,38 @@ router.get(
   })
 );
 
-// Generate flashcards for a lecture
+// Generate flashcards via LLM from a lecture's summary.
+// Requires summary to exist first (two-step pipeline: PDF → summary → flashcards).
+// Each generated card is initialized with SM-2 scheduling defaults (interval=1, ease=2.5).
 router.post(
   '/generate',
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    console.log('[FLASHCARDS_ROUTE] Received flashcard generation request');
     const { lectureId } = req.body;
 
     if (!lectureId) {
-      console.error('[FLASHCARDS_ROUTE] Missing lectureId');
       return res.status(400).json({ error: 'lectureId is required' });
     }
 
-    console.log('[FLASHCARDS_ROUTE] Fetching lecture:', lectureId);
-
-    // Get lecture
     const lecture = await prisma.lecture.findUnique({ where: { id: lectureId } });
 
     if (!lecture || lecture.userId !== req.userId) {
-      console.error('[FLASHCARDS_ROUTE] Lecture not found or unauthorized');
       return res.status(404).json({ error: 'Lecture not found' });
     }
 
-    // Check if summary exists
     if (!lecture.summary) {
-      console.error('[FLASHCARDS_ROUTE] No summary for lecture');
       return res.status(400).json({ error: 'Please generate summary first' });
     }
 
-    // Parse summary JSON and extract the summary text
     let summaryText = lecture.summary;
     try {
       const summaryObj = JSON.parse(lecture.summary);
       summaryText = summaryObj.summary || lecture.summary;
-    } catch (e) {
-      console.log('[FLASHCARDS_ROUTE] Summary is not JSON, using as-is');
+    } catch {
+      // Summary is not JSON, using as-is
     }
 
     // Generate flashcards
-    console.log('[FLASHCARDS_ROUTE] Calling generateFlashcards service');
     const generatedCards = await generateFlashcards(summaryText);
-
-    console.log('[FLASHCARDS_ROUTE] Flashcards generated, count:', Array.isArray(generatedCards) ? generatedCards.length : 0);
-    if (Array.isArray(generatedCards) && generatedCards.length === 0) {
-      console.log('[FLASHCARDS_ROUTE] Empty flashcards array returned:', JSON.stringify(generatedCards, null, 2));
-    }
-    if (Array.isArray(generatedCards) && generatedCards.length > 0) {
-      console.log('[FLASHCARDS_ROUTE] First flashcard:', JSON.stringify(generatedCards[0], null, 2));
-    }
 
     // Initialize scheduling data
     const schedulingData = initializeFlashcardScheduling();
@@ -193,12 +173,12 @@ router.post(
       )
     );
 
-    console.log('[FLASHCARDS_ROUTE] Flashcards saved to database, count:', flashcards.length);
     return sendSuccess(res, flashcards, 201);
   })
 );
 
-// Review flashcard
+// Review flashcard — applies SM-2 spaced repetition scheduling.
+// "easy" lengthens interval (×2.5), "hard" shortens (×1.2), "again" resets to 10min.
 router.patch(
   '/:id/review',
   asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -214,7 +194,6 @@ router.patch(
       return res.status(404).json({ error: 'Flashcard not found' });
     }
 
-    // Calculate next review date using SM-2 algorithm
     const scheduling = calculateNextReview(ease, flashcard.interval, flashcard.ease);
 
     // Update flashcard with new scheduling data

@@ -3,8 +3,6 @@ import { useAuthStore } from '../store/auth';
 
 const API_URL = (import.meta as any).env.VITE_API_URL || 'http://localhost:3000/api';
 
-console.log('[API] Configured base URL:', API_URL);
-
 const api: AxiosInstance = axios.create({
   baseURL: API_URL,
   headers: {
@@ -17,9 +15,6 @@ api.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token;
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
-    console.log(`[API] Added token to ${config.method?.toUpperCase()} ${config.url}`);
-  } else {
-    console.warn(`[API] No token available for ${config.method?.toUpperCase()} ${config.url}`);
   }
   return config;
 });

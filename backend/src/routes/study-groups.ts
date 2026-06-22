@@ -242,7 +242,11 @@ router.delete(
   })
 );
 
-// Invite users to study group
+// Invite users to study group — supports two paths:
+// 1. Direct user IDs: immediately adds as members (for users already on the platform).
+// 2. Emails: if the email matches an existing user, adds directly; otherwise creates a
+//    time-limited invitation token (7 days) and sends an email with an accept link.
+// Owner-only action; capped at 50 invites per request to prevent abuse.
 router.post(
   '/:id/invite',
   asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -311,13 +315,11 @@ router.post(
     if (userIds && userIds.length > 0) {
       for (const userId of userIds) {
         try {
-          // Prevent self-invitation
           if (userId === req.userId) {
             results.skipped++;
             continue;
           }
 
-          // Check if user exists
           const user = await prisma.user.findUnique({
             where: { id: userId },
           });
@@ -327,7 +329,6 @@ router.post(
             continue;
           }
 
-          // Check if already a member
           const existing = await prisma.studyGroupMember.findUnique({
             where: { groupId_userId: { groupId: id, userId } },
           });
@@ -342,8 +343,7 @@ router.post(
           });
 
           results.invited++;
-        } catch (error) {
-          console.error(`Failed to invite ${userId}:`, error);
+        } catch {
           results.failed++;
         }
       }
@@ -353,31 +353,22 @@ router.post(
     if (emails && emails.length > 0) {
       for (const email of emails) {
         try {
-          console.log(`[INVITE] Processing email: ${email}`);
-          // Normalize email
           const normalizedEmail = email.toLowerCase().trim();
-          console.log(`[INVITE] Normalized email: ${normalizedEmail}`);
 
-          // Check if user already exists
           const existingUser = await prisma.user.findUnique({
             where: { email: normalizedEmail },
           });
 
           if (existingUser) {
-            console.log(`[INVITE] User exists: ${existingUser.id}`);
-            // Check if already a member
             const isMember = await prisma.studyGroupMember.findUnique({
               where: { groupId_userId: { groupId: id, userId: existingUser.id } },
             });
 
             if (isMember) {
-              console.log(`[INVITE] User already member`);
               results.skipped++;
               continue;
             }
 
-            // Add directly if user exists and not already member
-            console.log(`[INVITE] Adding existing user as member`);
             await prisma.studyGroupMember.upsert({
               where: { groupId_userId: { groupId: id, userId: existingUser.id } },
               update: {},
@@ -385,24 +376,18 @@ router.post(
             });
             results.invited++;
           } else {
-            console.log(`[INVITE] User doesn't exist, creating invitation`);
-            // Create invitation for non-existent user
             const expiresAt = new Date();
             expiresAt.setDate(expiresAt.getDate() + 7);
 
-            // Check if invitation already exists and is not expired
             const existingInvitation = await prisma.studyGroupInvitation.findUnique({
               where: { groupId_email: { groupId: id, email: normalizedEmail } },
             });
 
             if (existingInvitation && existingInvitation.expiresAt > new Date()) {
-              console.log(`[INVITE] Invitation already exists and not expired`);
               results.skipped++;
               continue;
             }
 
-            // Create or update invitation
-            console.log(`[INVITE] Creating/updating invitation`);
             const invitation = await prisma.studyGroupInvitation.upsert({
               where: { groupId_email: { groupId: id, email: normalizedEmail } },
               update: { expiresAt, createdBy: req.userId! },
@@ -414,14 +399,7 @@ router.post(
               },
             });
 
-            console.log(`[INVITE] Invitation created with token: ${invitation.token}`);
-
-            // Send email
             const acceptLink = `${process.env.FRONTEND_URL || 'http://localhost:5173'}/accept-invitation/${invitation.token}`;
-            console.log(`[INVITE] Sending email with link: ${acceptLink}`);
-            console.log(`[INVITE] Group name: ${group.name}`);
-            console.log(`[INVITE] Inviter: ${inviter.name || 'A user'}`);
-            console.log(`[INVITE] Recipient: ${normalizedEmail}`);
 
             const emailSent = await emailService.sendGroupInvitation({
               recipientEmail: normalizedEmail,
@@ -430,19 +408,13 @@ router.post(
               acceptLink,
             });
 
-            console.log(`[INVITE] Email sent result: ${emailSent}`);
-
             if (emailSent) {
               results.invited++;
             } else {
-              console.error(`[INVITE] Email failed to send`);
               results.failed++;
             }
           }
-        } catch (error) {
-          console.error(`[INVITE] ✗ Failed to invite ${email}`);
-          console.error(`[INVITE] Error:`, error);
-          console.error(`[INVITE] Error stack:`, (error as any)?.stack);
+        } catch {
           results.failed++;
         }
       }
@@ -538,18 +510,12 @@ router.post(
     const { id } = req.params;
     const { flashcardIds, title, description } = req.body;
 
-    console.log('[STUDY_GROUP] Add flashcard set - groupId:', id);
-    console.log('[STUDY_GROUP] flashcardIds:', flashcardIds);
-    console.log('[STUDY_GROUP] title:', title);
-
     // Validate inputs
     if (!id || typeof id !== 'string') {
-      console.error('[STUDY_GROUP] Invalid group ID:', id);
       return res.status(400).json({ error: 'Invalid group ID' });
     }
 
     if (!flashcardIds || !Array.isArray(flashcardIds) || flashcardIds.length === 0) {
-      console.error('[STUDY_GROUP] Invalid flashcard IDs');
       return res.status(400).json({ error: 'flashcardIds array is required and cannot be empty' });
     }
 
@@ -624,10 +590,6 @@ router.post(
   asyncHandler(async (req: AuthRequest, res: Response) => {
     const { id } = req.params;
     const { quizIds, title, description } = req.body;
-
-    console.log('[STUDY_GROUP] Add quiz set - groupId:', id);
-    console.log('[STUDY_GROUP] quizIds:', quizIds);
-    console.log('[STUDY_GROUP] title:', title);
 
     // Validate inputs
     if (!id || typeof id !== 'string') {
@@ -858,7 +820,9 @@ router.delete(
   })
 );
 
-// Accept study group invitation (must be before /:id routes)
+// Accept study group invitation — validates token, checks expiration (7 days),
+// verifies the authenticated user's email matches the invitation target, and
+// adds the user as a member. Token-based so it works via emailed links.
 router.post(
   '/invitations/accept/:token',
   asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -973,8 +937,7 @@ router.post(
         message: 'Successfully joined the study group!',
         group: parseGroup(group),
       });
-    } catch (error) {
-      console.error('Failed to accept invitation:', error);
+    } catch {
       return res.status(500).json({ error: 'Failed to process invitation' });
     }
   })

@@ -7,58 +7,40 @@ import { sendSuccess } from '../utils/response.js';
 
 const router = Router();
 
-// Generate quiz for a lecture
+// Generate quiz via LLM — produces 10 MCQs from the lecture summary.
+// Minimum 500 characters in summary required to ensure enough content for meaningful questions.
 router.post(
   '/generate',
   asyncHandler(async (req: AuthRequest, res: Response) => {
-    console.log('[QUIZ_ROUTE] Received quiz generation request');
     const { lectureId } = req.body;
 
     if (!lectureId) {
-      console.error('[QUIZ_ROUTE] Missing lectureId');
       return res.status(400).json({ error: 'lectureId is required' });
     }
 
-    console.log('[QUIZ_ROUTE] Fetching lecture:', lectureId);
-
-    // Get lecture
     const lecture = await prisma.lecture.findUnique({ where: { id: lectureId } });
 
     if (!lecture || lecture.userId !== req.userId) {
-      console.error('[QUIZ_ROUTE] Lecture not found or unauthorized');
       return res.status(404).json({ error: 'Lecture not found' });
     }
 
-    // Check if summary exists
     if (!lecture.summary) {
-      console.error('[QUIZ_ROUTE] No summary for lecture');
       return res.status(400).json({ error: 'Lecture summary not generated yet' });
     }
 
-    // Check minimum lecture length
     const summary = JSON.parse(lecture.summary);
     if (summary.summary.length < 500) {
-      console.error('[QUIZ_ROUTE] Summary too short:', summary.summary.length);
       return res.status(400).json({ error: 'Lecture too short to generate quiz (min 500 words)' });
     }
 
-    // Generate quiz
-    console.log('[QUIZ_ROUTE] Calling generateQuiz service');
     const questions = await generateQuiz(lecture.summary);
-
-    console.log('[QUIZ_ROUTE] Quiz generated, questions count:', Array.isArray(questions) ? questions.length : 0);
-    if (Array.isArray(questions) && questions.length === 0) {
-      console.log('[QUIZ_ROUTE] Empty questions array returned:', JSON.stringify(questions, null, 2));
-    }
-    if (Array.isArray(questions) && questions.length > 0) {
-      console.log('[QUIZ_ROUTE] First question:', JSON.stringify(questions[0], null, 2));
-    }
 
     res.json(questions);
   })
 );
 
-// Submit quiz
+// Submit quiz — client sends questions with user's selected answers and the known correct answers.
+// Server computes the score, persists per-question results, and stores topic metadata for weak-area analysis.
 router.post(
   '/submit',
   asyncHandler(async (req: AuthRequest, res: Response) => {

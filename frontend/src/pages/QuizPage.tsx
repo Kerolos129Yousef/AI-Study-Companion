@@ -2,7 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { quizService } from '../services';
 import { LoadingSpinner } from '../components/Common';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { ChevronLeft, ChevronRight, CheckCircle, AlertCircle, Clock, BookOpen } from 'lucide-react';
 import Layout from '../components/Layout';
 
@@ -17,24 +17,7 @@ export default function QuizPage() {
     queryFn: () => quizService.generateQuiz(lectureId!),
   });
 
-  useEffect(() => {
-    if (quizError) {
-      console.error('[QUIZ] Error generating quiz:', quizError);
-      console.error('[QUIZ] Error details:', (quizError as any).response?.data);
-    }
-  }, [quizError]);
-
-  // Extract questions and log for debugging
   const questions = quizResponse?.data || [];
-
-  useEffect(() => {
-    if (questions.length === 0 && !isLoading && quizResponse) {
-      console.log('[QUIZ] Empty questions array. Full response:', JSON.stringify(quizResponse, null, 2));
-    }
-    if (questions.length > 0) {
-      console.log('[QUIZ] First question structure:', JSON.stringify(questions[0], null, 2));
-    }
-  }, [questions, isLoading, quizResponse]);
 
   const submitMutation = useMutation({
     mutationFn: () => {
@@ -44,16 +27,10 @@ export default function QuizPage() {
         correct: q.correct,
         userAnswer: answers[idx],
       }));
-      console.log('[QUIZ] Submitting answers:', JSON.stringify(formattedAnswers, null, 2));
       return quizService.submitQuiz(lectureId!, formattedAnswers);
     },
     onSuccess: (response) => {
-      console.log('[QUIZ] Quiz submitted successfully:', response);
       navigate('/quiz/results/1', { state: response.data });
-    },
-    onError: (error: any) => {
-      console.error('[QUIZ] Error submitting quiz:', error);
-      console.error('[QUIZ] Error details:', error.response?.data);
     },
   });
 

@@ -2,6 +2,8 @@ import nodemailer from 'nodemailer';
 
 let transporter: ReturnType<typeof nodemailer.createTransport> | null = null;
 
+// Lazily initializes the SMTP transporter (default: Gmail via app password).
+// Logs a warning if credentials are missing — the app still starts but invitations fail silently.
 function getTransporter() {
   if (!transporter) {
     const emailUser = process.env.EMAIL_USER;
@@ -18,8 +20,6 @@ function getTransporter() {
         pass: emailPassword,
       },
     });
-
-    console.log(`[EMAIL] Transporter initialized with service: ${process.env.EMAIL_SERVICE || 'gmail'}, user: ${emailUser ? '***' : 'not set'}`);
   }
   return transporter;
 }
@@ -50,14 +50,9 @@ export const emailService = {
     inviterName,
     acceptLink,
   }: InvitationEmailProps) {
-    console.log('[EMAIL] sendGroupInvitation called');
-    console.log('[EMAIL] Recipient:', recipientEmail);
-    console.log('[EMAIL] Group:', groupName);
-
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(recipientEmail)) {
-      console.error('[EMAIL] Invalid email format:', recipientEmail);
       return false;
     }
 
@@ -68,7 +63,6 @@ export const emailService = {
 
     // Validate URL format
     if (!acceptLink.startsWith('http://') && !acceptLink.startsWith('https://')) {
-      console.error('[EMAIL] Invalid invitation link format');
       return false;
     }
 
@@ -141,10 +135,6 @@ If you don't want to join this group, you can simply ignore this email.
 
     try {
       const emailTransporter = getTransporter();
-      console.log('[EMAIL] Transporter ready, attempting to send...');
-      console.log('[EMAIL] From:', process.env.EMAIL_FROM || process.env.EMAIL_USER);
-      console.log('[EMAIL] To:', recipientEmail);
-      console.log('[EMAIL] Service:', process.env.EMAIL_SERVICE || 'gmail');
 
       const info = await emailTransporter.sendMail({
         from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
@@ -154,16 +144,10 @@ If you don't want to join this group, you can simply ignore this email.
         html: htmlContent,
       });
 
-      console.log('[EMAIL] ✓ Invitation sent successfully');
-      console.log('[EMAIL] Message ID:', info.messageId);
-      console.log('[EMAIL] Response:', info.response);
+      console.log('[EMAIL] Invitation sent:', info.messageId);
       return true;
     } catch (error: any) {
-      console.error('[EMAIL] ✗ Failed to send invitation');
-      console.error('[EMAIL] Error name:', error.name);
-      console.error('[EMAIL] Error code:', error.code);
-      console.error('[EMAIL] Error message:', error.message);
-      console.error('[EMAIL] Full error:', JSON.stringify(error, null, 2));
+      console.error('[EMAIL] Failed to send invitation:', error.message);
       return false;
     }
   },

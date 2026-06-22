@@ -1,9 +1,7 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
-import fs from 'fs';
-import path from 'path';
-import express, { Express, Request, Response, NextFunction } from 'express';
+import express, { Request, Response } from 'express';
 import cors from 'cors';
 import {rateLimit} from 'express-rate-limit';
 import * as Sentry from '@sentry/node';
@@ -24,7 +22,7 @@ import { errorHandler } from './middleware/errorHandler.js';
 import { authMiddleware, optionalAuthMiddleware } from './middleware/auth.js';
 import { prisma } from './lib/prisma.js';
 
-const app: Express = express();
+const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Initialize Sentry
@@ -87,104 +85,11 @@ app.get('/api/health', (req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// Test Claude API
-app.get('/api/test-claude', async (req: Request, res: Response) => {
-  console.log('[TEST] Testing Claude API...');
-  try {
-    const { generateSummary } = await import('./services/claude.service.js');
-    const testText = 'This is a test lecture about machine learning. Machine learning is a subset of artificial intelligence that focuses on enabling computers to learn from data without being explicitly programmed. Key concepts include supervised learning, unsupervised learning, and reinforcement learning.';
-
-    console.log('[TEST] Calling generateSummary with test text...');
-    const result = await generateSummary(testText);
-    console.log('[TEST] Result:', JSON.stringify(result).substring(0, 200));
-
-    res.json({ success: true, result });
-  } catch (error: any) {
-    console.error('[TEST] Error:', error.message);
-    console.error('[TEST] Full error:', JSON.stringify(error));
-    res.status(500).json({ error: error.message, details: JSON.stringify(error) });
-  }
-});
-
-// Test Email Transporter
-app.get('/api/test-email', async (req: Request, res: Response) => {
-  console.log('[TEST] Testing Email Transporter...');
-  try {
-    const { emailService } = await import('./services/email.js');
-
-    console.log('[TEST] Attempting to send test email...');
-    const result = await emailService.sendGroupInvitation({
-      recipientEmail: 'muhammedreda6@gmail.com',
-      recipientName: 'Test User',
-      groupName: 'Test Study Group',
-      inviterName: 'Admin',
-      acceptLink: 'http://localhost:5173/accept-invitation/test-token-12345',
-    });
-
-    console.log('[TEST] Result:', result);
-
-    res.json({
-      success: true,
-      emailSent: result,
-      credentials: {
-        user: process.env.EMAIL_USER,
-        service: process.env.EMAIL_SERVICE,
-        from: process.env.EMAIL_FROM,
-      }
-    });
-  } catch (error: any) {
-    console.error('[TEST] Error:', error.message);
-    res.status(500).json({ error: error.message, details: JSON.stringify(error) });
-  }
-});
-
-// Debug Transporter
-app.get('/api/debug-email', async (req: Request, res: Response) => {
-  console.log('\n===== [DEBUG EMAIL] =====');
-  console.log('[DEBUG] process.env.EMAIL_SERVICE:', process.env.EMAIL_SERVICE);
-  console.log('[DEBUG] process.env.EMAIL_USER:', process.env.EMAIL_USER);
-  console.log('[DEBUG] process.env.EMAIL_PASSWORD:', process.env.EMAIL_PASSWORD ? '***' : 'UNDEFINED');
-  console.log('[DEBUG] process.env.EMAIL_FROM:', process.env.EMAIL_FROM);
-
-  try {
-    const nodemailer = await import('nodemailer');
-
-    // Create a fresh transporter to test
-    const testTransporter = nodemailer.createTransport({
-      service: process.env.EMAIL_SERVICE || 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD,
-      },
-    });
-
-    console.log('[DEBUG] Created test transporter');
-
-    // Verify connection
-    const verified = await testTransporter.verify();
-    console.log('[DEBUG] Transporter verified:', verified);
-
-    res.json({
-      success: true,
-      verified,
-      config: {
-        service: process.env.EMAIL_SERVICE,
-        user: process.env.EMAIL_USER,
-        from: process.env.EMAIL_FROM,
-        hasPassword: !!process.env.EMAIL_PASSWORD,
-      }
-    });
-  } catch (error: any) {
-    console.error('[DEBUG] Error:', error.message);
-    console.error('[DEBUG] Full error:', JSON.stringify(error, null, 2));
-    res.status(500).json({
-      error: error.message,
-      details: error.toString()
-    });
-  } finally {
-    console.log('===== [END DEBUG EMAIL] =====\n');
-  }
-});
+// --- Route registration ---
+// Public: auth routes have no middleware (login/register).
+// Semi-public: sharing uses optionalAuth so public links work unauthenticated
+//   while authenticated users get enriched responses (e.g. "my attempt" on shared quizzes).
+// Protected: all other routes require a valid Bearer JWT via authMiddleware.
 
 // Public routes
 app.use('/api/auth', authRoutes);

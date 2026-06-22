@@ -30,7 +30,10 @@ router.get(
   })
 );
 
-// Generate personalized study plan and persist it
+// Generate personalized study plan via LLM.
+// Aggregates user's full learning context (courses, lectures, flashcard due counts, quiz scores,
+// weak topics) and sends it to the AI to produce a prioritized daily study schedule.
+// Upserts — each user has at most one active plan; regeneration replaces the previous one.
 router.post(
   '/generate',
   asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -109,7 +112,8 @@ router.post(
       ? Math.round(quizzes.reduce((sum, q) => sum + (q.score / q.total) * 100, 0) / quizzes.length)
       : 0;
 
-    // Calculate weak areas by topic
+    // Calculate weak areas by topic: aggregates quiz question results to find
+    // the lowest-scoring topics, which the AI study plan will prioritize.
     const topicMap: Record<string, { correct: number; total: number }> = {};
     for (const q of quizQuestions) {
       const topic = q.topic || 'General';

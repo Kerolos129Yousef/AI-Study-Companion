@@ -506,9 +506,6 @@ export default function DashboardPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['study-plan'] });
     },
-    onError: (error: any) => {
-      console.error('Failed to generate study plan:', error);
-    },
   });
 
   const deletePlanMutation = useMutation({

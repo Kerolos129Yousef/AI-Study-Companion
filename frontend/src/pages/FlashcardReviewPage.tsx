@@ -24,13 +24,6 @@ export default function FlashcardReviewPage() {
     queryFn: () => (lectureId ? flashcardService.getFlashcards(lectureId) : flashcardService.getDueFlashcards()),
   });
 
-  useEffect(() => {
-    if (flashcardsError) {
-      console.error('[FLASHCARDS] Error fetching flashcards:', flashcardsError);
-      console.error('[FLASHCARDS] Error details:', (flashcardsError as any).response?.data);
-    }
-  }, [flashcardsError]);
-
   const flashcards: Flashcard[] = Array.isArray(flashcardsResponse?.data?.data) ? flashcardsResponse.data.data : [];
 
   // Reset currentIndex if out of bounds
@@ -39,13 +32,6 @@ export default function FlashcardReviewPage() {
       setCurrentIndex(0);
     }
   }, [flashcards.length, currentIndex]);
-
-  // Log empty array for debugging
-  useEffect(() => {
-    if (flashcards.length === 0 && !isLoading) {
-      console.log('[FLASHCARDS] No flashcards returned. Full response:', JSON.stringify(flashcardsResponse, null, 2));
-    }
-  }, [flashcards, isLoading, flashcardsResponse]);
 
   const reviewMutation = useMutation({
     mutationFn: (ease: 'easy' | 'hard' | 'again') => {

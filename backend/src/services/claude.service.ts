@@ -4,16 +4,9 @@ let groq: Groq | null = null;
 
 function getGroqClient(): Groq {
   if (!groq) {
-    console.log('[GROQ] Initializing Groq client...');
-    console.log('[GROQ] API Key present:', !!process.env.GROQ_API_KEY);
-    console.log('[GROQ] API Key length:', process.env.GROQ_API_KEY?.length || 0);
-    console.log('[GROQ] API Key starts with:', process.env.GROQ_API_KEY?.substring(0, 10) || 'MISSING');
-
     groq = new Groq({
       apiKey: process.env.GROQ_API_KEY,
     });
-
-    console.log('[GROQ] Groq client initialized');
   }
   return groq;
 }
@@ -37,18 +30,16 @@ interface QuizQuestion {
   topic?: string;
 }
 
+// Calls Groq LLM API with automatic retry (exponential backoff on 429, final
+// attempt uses a stricter system prompt for JSON compliance). Returns `fallback`
+// on unrecoverable errors rather than throwing, so callers always get a result.
 async function callGroqWithRetry(
   prompt: string,
-  fallback: any,
+  fallback: unknown,
   maxRetries = 2
-): Promise<any> {
-  let lastError: Error | null = null;
-
+): Promise<unknown> {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      console.log(`[GROQ] Attempt ${attempt + 1}/${maxRetries}, calling API...`);
-
-      // Validate API key before making request
       if (!process.env.GROQ_API_KEY) {
         throw new Error('GROQ_API_KEY environment variable is not set');
       }
@@ -66,58 +57,37 @@ async function callGroqWithRetry(
         throw new Error('Empty response from Groq API');
       }
 
-      console.log('[GROQ] API Response received, length:', text.length);
-      console.log('[GROQ] Response preview:', text.substring(0, 200));
-
-      // Strip markdown code fences if present
       let cleanText = text.trim();
       if (cleanText.startsWith('```')) {
         cleanText = cleanText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
       }
 
-      const parsed = JSON.parse(cleanText);
-      console.log('[GROQ] Successfully parsed JSON');
-      return parsed;
+      return JSON.parse(cleanText);
     } catch (error: any) {
-      lastError = error;
-      console.error(`[GROQ] Attempt ${attempt + 1} failed:`, error.message);
-      console.error('[GROQ] Error type:', error.constructor.name);
-      console.error('[GROQ] Error status:', error.status);
-      console.error('[GROQ] Full error:', JSON.stringify(error, null, 2));
 
-      // Handle 400 Bad Request - likely model decommissioned or invalid request
       if (error.status === 400 || error.message?.includes('400')) {
-        console.error('[GROQ] 400 Bad Request - check model name and API key validity');
         if (attempt === maxRetries - 1) {
           return fallback;
         }
         continue;
       }
 
-      // Handle rate limiting with exponential backoff
       if (error.status === 429 || error.message?.includes('429')) {
         const backoffMs = Math.pow(2, attempt) * 1000;
-        console.log(`[GROQ] Rate limited, backing off for ${backoffMs}ms`);
         await new Promise((resolve) => setTimeout(resolve, backoffMs));
         continue;
       }
 
-      // Handle authentication errors
       if (error.status === 401 || error.message?.includes('401')) {
-        console.error('[GROQ] Authentication failed - check GROQ_API_KEY');
         return fallback;
       }
 
-      // Handle token limit exceeded
       if (error.message?.includes('max_tokens')) {
-        console.error('[GROQ] Token limit exceeded:', error);
         return fallback;
       }
 
-      // On last attempt, add stricter JSON instruction
       if (attempt === maxRetries - 1) {
         try {
-          console.log('[GROQ] Final attempt with strict JSON instruction...');
           const retry = await getGroqClient().chat.completions.create({
             model: 'llama-3.3-70b-versatile',
             max_tokens: 2000,
@@ -134,33 +104,23 @@ async function callGroqWithRetry(
             throw new Error('Empty response from Groq API on final attempt');
           }
 
-          console.log('[GROQ] Final attempt response received');
           let cleanRetryText = text.trim();
           if (cleanRetryText.startsWith('```')) {
             cleanRetryText = cleanRetryText.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
           }
-          const parsed = JSON.parse(cleanRetryText);
-          console.log('[GROQ] Final attempt succeeded');
-          return parsed;
-        } catch (retryError: any) {
-          console.error('[GROQ] Final attempt failed:', retryError.message);
-          console.error('[GROQ] Full error:', JSON.stringify(retryError, null, 2));
+          return JSON.parse(cleanRetryText);
+        } catch {
           return fallback;
         }
       }
     }
   }
 
-  console.error('[GROQ] All retries exhausted, returning fallback');
   return fallback;
 }
 
 export async function generateSummary(lectureText: string): Promise<SummaryResult> {
-  console.log('[GENERATESUM] Starting summary generation');
-  console.log('[GENERATESUM] Input text length:', lectureText?.length || 0);
-
   if (!lectureText || lectureText.trim().length === 0) {
-    console.error('[GENERATESUM] Empty lecture text provided');
     return {
       title: 'Unable to generate summary',
       keyTopics: [],
@@ -186,8 +146,6 @@ Format:
 Lecture text:
 ${lectureText}`;
 
-  console.log('[GENERATESUM] Prompt created, length:', prompt.length);
-
   const fallback: SummaryResult = {
     title: 'Unable to generate summary',
     keyTopics: [],
@@ -195,15 +153,11 @@ ${lectureText}`;
     importantTerms: [],
   };
 
-  console.log('[GENERATESUM] Calling Groq API...');
   const result = await callGroqWithRetry(prompt, fallback);
-  console.log('[GENERATESUM] Result received:', JSON.stringify(result).substring(0, 100));
-
-  return result;
+  return result as SummaryResult;
 }
 
 export async function generateFlashcards(summary: string): Promise<FlashcardResult[]> {
-  console.log('[FLASHCARDS] Starting flashcard generation');
   const prompt = `You are an academic flashcard generator. Based on the lecture summary below, generate exactly 15 flashcards as a JSON array.
 
 Return ONLY valid JSON, no markdown.
@@ -219,15 +173,10 @@ ${summary}`;
   const fallback: FlashcardResult[] = [];
 
   const result = await callGroqWithRetry(prompt, fallback);
-  console.log('[FLASHCARDS] Generated flashcards count:', Array.isArray(result) ? result.length : 0);
-  if (Array.isArray(result) && result.length === 0) {
-    console.log('[FLASHCARDS] Empty array returned. Full result:', JSON.stringify(result, null, 2));
-  }
-  return result;
+  return result as FlashcardResult[];
 }
 
 export async function generateQuiz(summary: string): Promise<QuizQuestion[]> {
-  console.log('[QUIZ] Starting quiz generation');
   const prompt = `You are an exam question generator. Generate exactly 10 multiple-choice questions from the content below.
 
 Return ONLY valid JSON, no markdown.
@@ -246,20 +195,7 @@ ${summary}`;
   const fallback: QuizQuestion[] = [];
 
   const result = await callGroqWithRetry(prompt, fallback);
-  console.log('[QUIZ] Generated quiz questions count:', Array.isArray(result) ? result.length : 0);
-  if (Array.isArray(result) && result.length === 0) {
-    console.log('[QUIZ] Empty array returned. Full result:', JSON.stringify(result, null, 2));
-  }
-  if (Array.isArray(result) && result.length > 0) {
-    console.log('[QUIZ] First question structure:', JSON.stringify(result[0], null, 2));
-  }
-  return result;
-}
-
-export function logTokenUsage(feature: string, tokens: number): void {
-  const costPerMTok = 0.003; // Claude Sonnet 4.6 input cost
-  const cost = (tokens / 1000000) * costPerMTok;
-  console.log(`[COST] ${feature}: ${tokens} tokens (~$${cost.toFixed(4)})`);
+  return result as QuizQuestion[];
 }
 
 export interface StudyPlanContext {
@@ -279,8 +215,6 @@ export interface StudyPlanContext {
 export async function generateStudyPlan(
   context: StudyPlanContext
 ): Promise<{ plan: string; dailyGoals: string[] }> {
-  console.log('[STUDY_PLAN] Starting study plan generation');
-
   const weakAreasList = context.weakAreas
     .slice(0, 5)
     .map((a) => `${a.topic} (${a.percentage}% mastery)`)
@@ -314,6 +248,5 @@ Return ONLY valid JSON with no markdown:
   };
 
   const result = await callGroqWithRetry(prompt, fallback);
-  console.log('[STUDY_PLAN] Generated study plan');
-  return result;
+  return result as { plan: string; dailyGoals: string[] };
 }

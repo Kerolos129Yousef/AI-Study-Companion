@@ -475,7 +475,10 @@ router.get(
   })
 );
 
-// Get shared flashcard set by token (auth required or public)
+// Access control for shared flashcard sets: a set is accessible if any of these hold:
+// 1. isPublic=true (anyone with the link), 2. requester is the creator,
+// 3. requester is in the sharedWith list, 4. requester is a member of the linked study group.
+// The sharing router uses optionalAuthMiddleware so public sets work without login.
 router.get(
   '/flashcard/:shareToken',
   asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -518,8 +521,9 @@ router.get(
   })
 );
 
-// Get shared quiz set by token (auth required or public)
-// Returns questions for interactive quiz-taking; includes recipient's own attempt if already taken
+// Shared quiz set access + interactive quiz-taking endpoint.
+// Returns questions for the recipient to answer; includes their most recent attempt if they've already taken it.
+// Access control mirrors flashcard sets: public, creator, or sharedWith list.
 router.get(
   '/quiz/:shareToken',
   asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -622,7 +626,9 @@ router.get(
   })
 );
 
-// Submit a quiz attempt for a shared quiz set (recipient takes the quiz independently)
+// Submit a quiz attempt for a shared quiz set.
+// Creates a new Quiz record owned by the recipient (not the creator), linked back to the
+// shared set via sharedQuizSetId so the recipient's history stays separate from the creator's.
 router.post(
   '/quiz/:shareToken/submit',
   asyncHandler(async (req: AuthRequest, res: Response) => {
